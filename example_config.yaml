@@ -1,0 +1,130 @@
+# configuration.yaml 
+lock:
+  - platform: template
+    name: "Glue Lock"
+    value_template: "{{ is_state('sensor.frontdoor_status', 'on') }}"
+    #optimistic: true
+    lock:
+      service: switch.turn_on
+      data:
+        entity_id: switch.frontdoor_lock
+    unlock:
+      service: switch.turn_off
+      data:
+        entity_id: switch.frontdoor_lock
+
+
+switch:
+  - # Glue lock
+  - platform: rest
+    name: frontdoor_lock
+    resource: https://user-api.gluehome.com/v1/locks/Lock-id/operations
+    state_resource: https://user-api.gluehome.com/v1/locks/Lock-id/
+    is_on_template: >-
+      {% if value_json.connectionStatus == "connected" %}
+        true
+      {% else %}
+        false
+      {% endif %}
+    body_on: '{"type":2}'
+    body_off: '{"type":1}'
+    headers:
+      Content-Type: application/json
+      Authorization: !secret glue_api
+
+sensor:
+    # Glue lock
+  - platform: rest
+    resource: https://user-api.gluehome.com/v1/locks/Lock-id/
+    name: frontdoor_status
+    method: GET
+    headers:
+      Authorization: !secret glue_api
+    json_attributes:
+      - lastLockEvent
+      - batteryStatus
+    # States:
+    # unknown
+    # localLock
+    # localUnlock
+    # remoteLock
+    # remoteUnlock
+    # pressAndGo
+    # manualUnlock
+    # manualLock
+    value_template: >-
+      {% if state_attr('sensor.frontdoor_status', 'lastLockEvent')['eventType'] == "localUnlock" %}
+        off
+      {% elif state_attr('sensor.frontdoor_status', 'lastLockEvent')['eventType'] == "localLock" %}
+        on
+      {% elif state_attr('sensor.frontdoor_status', 'lastLockEvent')['eventType'] == "remoteUnlock" %} 
+        off
+      {% elif state_attr('sensor.frontdoor_status', 'lastLockEvent')['eventType'] == "remoteLock" %}
+        on
+      {% elif state_attr('sensor.frontdoor_status', 'lastLockEvent')['eventType'] == "pressAndGo" %}
+        on
+      {% else %}
+        off
+      {% endif %}
+
+# automations.yaml
+- id: '1613853334572'
+  alias: Send notification when lock status change
+  description: ''
+  trigger:
+  - platform: state
+    entity_id: lock.glue_lock
+  condition: []
+  action:
+  - service: notify.mobile_app_my_iphone_ha
+    data:
+      message: Main door is {{ states('lock.glue_lock') }}
+      data:
+        push:
+          sound: none
+  mode: single
+- id: '1613853549067'
+  alias: Update glue lock status
+  description: ''
+  trigger:
+  - platform: time_pattern
+    minutes: /1
+  condition: []
+  action:
+  - service: homeassistant.update_entity
+    data: {}
+    entity_id: sensor.frontdoor_status
+  mode: single
+
+- id: '1608500549510'
+  alias: lock door at night
+  description: ''
+  trigger:
+  - platform: time
+    at: input_datetime.lock_door
+  condition: []
+  action:
+  - service: lock.lock
+    entity_id: lock.glue_lock
+  - service: notify.mobile_app_my_iphone
+    data:
+      message: Auto lock door for you
+      data:
+        push:
+          sound: none
+
+# Lovelace
+cards:
+      - entities:
+          - entity: lock.glue_lock
+            icon: 'hass:lock'
+            secondary_info: last-changed
+          - entity: sensor.frontdoor_battery
+            name: Glue Lock Battery
+          - entity: sensor.frontdoor_status
+            name: Glue Lock Status
+          - entity: input_datetime.lock_door
+          - entity: automation.lock_door_at_night
+            name: Enable auto lock
+        type: entities
+        state_color: true
