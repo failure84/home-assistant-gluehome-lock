@@ -2,30 +2,22 @@
 lock:
   - platform: template
     name: "Glue Lock"
-    value_template: "{{ is_state('sensor.frontdoor_status', 'on') }}"
-    #optimistic: true
+    unique_id: "gluelock1"
+    value_template: "{{ states('sensor.gluelock_frontdoor_status') | regex_match('.*(Lock|pressAndGo)', ignorecase=False) }}"
     lock:
       service: switch.turn_on
       data:
-        entity_id: switch.frontdoor_lock
+        entity_id: switch.gluelock_frontdoor
     unlock:
       service: switch.turn_off
       data:
-        entity_id: switch.frontdoor_lock
-
+        entity_id: switch.gluelock_frontdoor
 
 switch:
-  - # Glue lock
+    # Glue lock
   - platform: rest
-    name: frontdoor_lock
+    name: gluelock_frontdoor
     resource: https://user-api.gluehome.com/v1/locks/Lock-id/operations
-    state_resource: https://user-api.gluehome.com/v1/locks/Lock-id/
-    is_on_template: >-
-      {% if value_json.connectionStatus == "connected" %}
-        true
-      {% else %}
-        false
-      {% endif %}
     body_on: '{"type":2}'
     body_off: '{"type":1}'
     headers:
@@ -36,7 +28,7 @@ sensor:
     # Glue lock
   - platform: rest
     resource: https://user-api.gluehome.com/v1/locks/Lock-id/
-    name: frontdoor_status
+    name: gluelock_frontdoor_status
     method: GET
     headers:
       Authorization: !secret glue_api
@@ -52,20 +44,13 @@ sensor:
     # pressAndGo
     # manualUnlock
     # manualLock
-    value_template: >-
-      {% if state_attr('sensor.frontdoor_status', 'lastLockEvent')['eventType'] == "localUnlock" %}
-        off
-      {% elif state_attr('sensor.frontdoor_status', 'lastLockEvent')['eventType'] == "localLock" %}
-        on
-      {% elif state_attr('sensor.frontdoor_status', 'lastLockEvent')['eventType'] == "remoteUnlock" %} 
-        off
-      {% elif state_attr('sensor.frontdoor_status', 'lastLockEvent')['eventType'] == "remoteLock" %}
-        on
-      {% elif state_attr('sensor.frontdoor_status', 'lastLockEvent')['eventType'] == "pressAndGo" %}
-        on
-      {% else %}
-        off
-      {% endif %}
+    value_template: "{{ state_attr('sensor.gluelock_frontdoor_status', 'lastLockEvent')['eventType'] }}"
+  - platform: template
+    sensors:
+      gluelock_frontdoor_battery:
+        value_template: "{{ state_attr('sensor.gluelock_frontdoor_status', 'batteryStatus') | int }}"
+        device_class: battery
+        unit_of_measurement: '%'
 
 # automations.yaml
 - id: '1613853334572'
@@ -93,7 +78,7 @@ sensor:
   action:
   - service: homeassistant.update_entity
     data: {}
-    entity_id: sensor.frontdoor_status
+    entity_id: sensor.gluelock_frontdoor_status
   mode: single
 
 - id: '1608500549510'
@@ -119,12 +104,16 @@ cards:
           - entity: lock.glue_lock
             icon: 'hass:lock'
             secondary_info: last-changed
-          - entity: sensor.frontdoor_battery
+          - entity: sensor.gluelock_frontdoor_battery
             name: Glue Lock Battery
-          - entity: sensor.frontdoor_status
+          - entity: sensor.gluelock_frontdoor_status
             name: Glue Lock Status
           - entity: input_datetime.lock_door
           - entity: automation.lock_door_at_night
             name: Enable auto lock
         type: entities
         state_color: true
+
+# Secrets
+    glue_api: 'Api-Key XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
+
