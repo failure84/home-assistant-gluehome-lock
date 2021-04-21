@@ -18,8 +18,16 @@ switch:
   - platform: rest
     name: gluelock_frontdoor
     resource: https://user-api.gluehome.com/v1/locks/Lock-id/operations
+    # Post request doesnt reture anything so we need a get request that return something
+    state_resource: https://user-api.gluehome.com/v1/locks/420a69f4-d0f5-4fa0-90e3-d9723bfc985d/
     body_on: '{"type":2}'
     body_off: '{"type":1}'
+    is_on_template: >-
+      {% if value_json.connectionStatus == "connected" %}
+        true
+      {% else %}
+         false
+      {% endif %}
     headers:
       Content-Type: application/json
       Authorization: !secret glue_api
